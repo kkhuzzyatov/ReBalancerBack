@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"gomod/config"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ssummers02/invest-api-go-sdk/pkg/investapi"
@@ -35,7 +37,7 @@ func CreatePriceMap(lastPrices []*investapi.LastPrice) map[string]float64 {
 }
 
 func GetPrice(figi string, priceMap map[string]float64) (float64, error) {
-	price, exists := priceMap[figi];
+	price, exists := priceMap[figi]
 	if exists && price != 0 {
 		return price, nil
 	}
@@ -59,7 +61,7 @@ func GetPriceOfCloseLastTradeDay(figi string) (float64, error) {
 		i++
 		endTime := time.Now().AddDate(0, 0, 0)
 		startTime := time.Now().AddDate(0, 0, -i)
-		ctx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs("authorization", "Bearer " + config.GetToken()))
+		ctx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+config.GetToken()))
 
 		candlesResp, err := client.GetCandles(ctx, &investapi.GetCandlesRequest{
 			Figi:     figi,
@@ -74,6 +76,26 @@ func GetPriceOfCloseLastTradeDay(figi string) (float64, error) {
 			return float64(candlesResp.Candles[0].Close.Units) + float64(candlesResp.Candles[0].Close.Nano)/1_000_000_000.0, nil
 		}
 	}
-	
+
 	return 0, errors.New("по позиции отсутствуют сделки за последние 5 дней")
+}
+
+// Проверка удовлетворения налоговой ставки шаблону (xx,xx)
+func CheckTaxRate(rate float64) bool {
+	if 0 < rate && rate < 100 {
+		return hasAtMostTwoDecimalPlaces(rate)
+	}
+
+	return false
+}
+
+// Проверка действительного числа на количнство знаков после запятой
+func hasAtMostTwoDecimalPlaces(f float64) bool {
+	formatted := strconv.FormatFloat(f, 'f', -1, 64)
+	parts := strings.Split(formatted, ".")
+	if len(parts) == 2 {
+		return len(parts[1]) <= 2
+	}
+
+	return true
 }
