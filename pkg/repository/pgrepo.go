@@ -2,7 +2,7 @@ package repository
 
 import (
 	"context"
-	"gomod/entities"
+	"gomod/pkg/entities"
 	"log"
 
 	"github.com/jackc/pgx/v4/pgxpool"

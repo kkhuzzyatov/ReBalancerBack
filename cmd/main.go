@@ -2,8 +2,8 @@ package main
 
 import (
 	"gomod/config"
-	"gomod/stocks"
-	"gomod/utils"
+	"gomod/pkg/stocks"
+	"gomod/pkg/utils"
 	"log"
 
 	"github.com/ssummers02/invest-api-go-sdk/pkg"
