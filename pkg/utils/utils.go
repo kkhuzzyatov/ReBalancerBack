@@ -61,7 +61,7 @@ func GetPriceOfCloseLastTradeDay(figi string) (float64, error) {
 		i++
 		endTime := time.Now().AddDate(0, 0, 0)
 		startTime := time.Now().AddDate(0, 0, -i)
-		ctx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+config.GetToken()))
+		ctx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs("authorization", "Bearer " + config.GetTokenOfTBank()))
 
 		candlesResp, err := client.GetCandles(ctx, &investapi.GetCandlesRequest{
 			Figi:     figi,

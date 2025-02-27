@@ -11,7 +11,7 @@ import (
 
 func main() {
 	cfg := pkg.Config{
-		Token:     config.GetToken(),
+		Token:     config.GetTokenOfTBank(),
 		AccountID: config.GetAccountID(),
 	}
 
