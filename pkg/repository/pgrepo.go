@@ -30,7 +30,7 @@ func NewRepo(connString string) *PGRepo {
 // Регистрация нового пользователя
 func (p *PGRepo) SignUp(user entities.User) error {
 	queryString := "INSERT INTO users (id, tax_rate) VALUES ($1, $2);"
-	_, err := p.pool.Exec(context.Background(), queryString, user.GetUserID(), user.GetTaxRate())
+	_, err := p.pool.Exec(context.Background(), queryString, user.Email, user.TaxRate)
 	if err != nil {
 		return err
 	}
