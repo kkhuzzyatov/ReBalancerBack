@@ -45,5 +45,4 @@ func main() {
 	stocks.SetBonds(bonds)
 	stocks.SetETFs(etfs)
 	stocks.SetPriceMap(priceMap)
-
 }
