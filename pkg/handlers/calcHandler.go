@@ -23,36 +23,23 @@ func Calc(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Ошибка декодирования JSON", http.StatusBadRequest)
 			return
 	}
+	
+	curAlloc := user.CurAllocation
+	targetAlloc := user.TargetAllocation
 
-	err = stocks.IsAllocValid[int](utils.AllocationParser[int](user.CurAllocation)) 
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	err = stocks.IsAllocValid[float64](utils.AllocationParser[float64](user.TargetAllocation)) 
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	// 	err = stocks.IsAllocValid[int](utils.AllocationParser[int](user.CurAllocation)) 
+	// 	if err != nil {
+	// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// 		return
+	// }
+	// 	err = stocks.IsAllocValid[float64](utils.AllocationParser[float64](user.TargetAllocation)) 
+	// 	if err != nil {
+	// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// 		return
+	// 	}
 
-	Stocks := make(map[string]entities.Stock)
-	Stocks["TMOS"] = entities.Stock{
-		Figi: "",
-		Lot: 1,
-		Price: 7.09,
-		Currency: "rub",
-		AciValue: -1,
-	}
-	Stocks["SU26229RMFS3"] = entities.Stock{
-		Figi: "",
-		Lot: 1,
-		Price: 927.98,
-		Currency: "rub",
-		AciValue: 21.74,
-	}
-	response := CalcRebalance(utils.AllocationParser[int](user.CurAllocation), utils.AllocationParser[float64](user.TargetAllocation), Stocks)
+	response := CalcRebalance(utils.AllocationParser[int](curAlloc), utils.AllocationParser[float64](targetAlloc), stocks.Stocks)
 
-	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(response))
 }
 

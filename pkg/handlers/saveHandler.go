@@ -28,7 +28,7 @@ func Save(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
+}
 	err = stocks.IsAllocValid[float64](utils.AllocationParser[float64](user.TargetAllocation)) 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
