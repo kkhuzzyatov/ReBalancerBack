@@ -3,8 +3,10 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"gomod/pkg/entities"
 	"gomod/pkg/repository"
+	"gomod/pkg/stocks"
 	"gomod/pkg/utils"
 	"net/http"
 )
@@ -15,49 +17,54 @@ func Save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userOfRequest entities.User
-	err := json.NewDecoder(r.Body).Decode(&userOfRequest)
+	var user entities.User
+	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
-		w.Write([]byte("Ошибка декодирования JSON: " + err.Error()))
+			http.Error(w, "Ошибка декодирования JSON", http.StatusBadRequest)
+			return
+	}
+
+	err = stocks.IsAllocValid[int](utils.AllocationParser[int](user.CurAllocation)) 
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	err = stocks.IsAllocValid[float64](utils.AllocationParser[float64](user.TargetAllocation)) 
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	userOfDB, err := repository.SelectUser(userOfRequest.Email)
+	var storedPassword string
+	err = repository.DB.QueryRow("SELECT password FROM users WHERE email = $1", user.Email).Scan(&storedPassword)
 	if err != nil {
-		// Пользователь не найден по email -> создаём новый аккаунт
-		if err == sql.ErrNoRows {
-			userOfRequest.PasswordHash, err = utils.HashPassword(userOfRequest.PasswordHash)
-			if err != nil {
-				w.Write([]byte("Ошибка сервера. Что-то пошло не так во время хеширования пароля. Пожалуйста, попробуйте ещё раз."))
+			if err == sql.ErrNoRows {
+
+				err = repository.DB.QueryRow(`INSERT INTO users (email, password, cur_allocation, target_allocation) VALUES ($1, $2, $3, $4) RETURNING email`, user.Email, user.Password, user.CurAllocation, user.TargetAllocation).Scan(&user.Email)
+				if err != nil {
+					http.Error(w, "Ошибка создания пользователя", http.StatusInternalServerError)
+					return
+				}
+	
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(fmt.Sprintf("Пользователь с email %s успешно создан", user.Email)))
 				return
 			}
-
-			err := repository.InsertUser(userOfRequest)
-			if err != nil {
-				w.Write([]byte("Ошибка сервера. Не удалось создать пользователя. Пожалуйста, попробуйте ещё раз."))
-				return
-			}
-
-			w.Write([]byte("Вы успешно зарегистрированы."))
+			http.Error(w, "Ошибка проверки пользователя", http.StatusInternalServerError)
 			return
-		} else {
-			w.Write([]byte("Ошибка сервера. Не удалось найти пользователя. Пожалуйста, попробуйте ещё раз."))
-			return
-		}
-	}
-	// Пользователь найден по email -> проверка пароля
-	passwordMatches := utils.CompareHashAndPassword(userOfRequest.PasswordHash, userOfDB.PasswordHash)
-	if !passwordMatches {
-		w.Write([]byte("Не удалось сохранить данные. Проверьте, правильно ли введён пароль."))
-		return
 	}
 
-	err = repository.UpdateUser(userOfRequest)
+	if storedPassword != user.Password {
+			http.Error(w, "Неверный пароль", http.StatusUnauthorized)
+			return
+	}
+
+	_, err = repository.DB.Exec(`UPDATE users SET cur_allocation = $3, target_allocation = $4 WHERE email = $1 AND password = $2`, user.Email, user.Password, user.CurAllocation, user.TargetAllocation)
 	if err != nil {
-		w.Write([]byte("Ошибка сервера. Не удалось обновить данные. Пожалуйста, попробуйте ещё раз."))
-		return
+			http.Error(w, "Ошибка обновления пользователя", http.StatusInternalServerError)
+			return
 	}
 
-	w.Write([]byte("Данные успешно обновлены."))
-	return
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"success": true}`))
 }

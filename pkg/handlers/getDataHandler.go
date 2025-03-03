@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"gomod/pkg/entities"
 	"gomod/pkg/repository"
-	"gomod/pkg/utils"
 	"net/http"
 )
 
@@ -15,31 +14,39 @@ func GetData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userOfRequest entities.User
-	err := json.NewDecoder(r.Body).Decode(&userOfRequest)
+	var requestUser entities.User
+	err := json.NewDecoder(r.Body).Decode(&requestUser)
 	if err != nil {
-		w.Write([]byte("Ошибка декодирования JSON: " + err.Error()))
-		return
+			http.Error(w, "Ошибка декодирования JSON", http.StatusBadRequest)
+			return
 	}
 
-	userOfDB, err := repository.SelectUser(userOfRequest.Email)
+	var user entities.User
+	err = repository.DB.QueryRow(`SELECT email, password, cur_allocation, target_allocation FROM users WHERE email = $1`, requestUser.Email).Scan(&user.Email, &user.Password, &user.CurAllocation, &user.TargetAllocation)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			w.Write([]byte("Не удалось загрузить данные. Проверьте, правильно ли введена почта."))
+			if err == sql.ErrNoRows {
+					http.Error(w, "Пользователь не найден", http.StatusNotFound)
+					return
+			}
+			http.Error(w, "Ошибка поиска пользователя", http.StatusInternalServerError)
 			return
-		} else {
-			w.Write([]byte("Ошибка сервера. Не удалось найти пользователя. Пожалуйста, попробуйте ещё раз."))
-			return
-		}
 	}
 
-  passwordMatches := utils.CompareHashAndPassword(userOfRequest.PasswordHash, userOfDB.PasswordHash)
-	if !passwordMatches {
-    w.Write([]byte("Не удалось загрузить данные. Проверьте, правильно ли введён пароль."))
-		return
-  }
+	if user.Password != requestUser.Password {
+			http.Error(w, "Неверный пароль", http.StatusUnauthorized)
+			return
+	}
 
+	response := struct {
+			Email           string `json:"email"`
+			CurAllocation   string `json:"cur_allocation"`
+			TargetAllocation string `json:"target_allocation"`
+			TaxRate int `json:"tax_rate"`
+	}{
+			Email:           user.Email,
+			CurAllocation:   user.CurAllocation,
+			TargetAllocation: user.TargetAllocation,
+	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(userOfDB)
+	json.NewEncoder(w).Encode(response)
 }
