@@ -1,20 +1,21 @@
-package stocks
+package tBankAPI
 
 import (
-	"fmt"
 	"gomod/config"
 	"gomod/pkg/entities"
 	"gomod/pkg/utils"
 	"log"
+	"sync"
 
 	"github.com/ssummers02/invest-api-go-sdk/pkg"
 	"github.com/ssummers02/invest-api-go-sdk/pkg/investapi"
 )
 
-var Stocks map[string]entities.Stock
 var PriceMap map[string]float64 
+var Stocks map[string]entities.Stock
+var Mutex sync.Mutex
 
-func InitializeData() {
+func FetchAssetsData() map[string]entities.Stock {
 	cfg := pkg.Config{
 		Token:     config.GetTokenOfTBank(),
 		AccountID: config.GetAccountID(),
@@ -25,90 +26,76 @@ func InitializeData() {
 		log.Println(err)
 	}
 
-	Stocks = make(map[string]entities.Stock)
+	stocks := make(map[string]entities.Stock)
 
 	shares, err := srv.GetSharesBase()
 	if err != nil {
 		log.Fatalf("Невозможно получить список акций, ошибка - %s", err)
 	}
-	CreateSharesMap(shares, Stocks)
+	createSharesMap(shares, stocks)
 
 	bonds, err := srv.GetBondsBase()
 	if err != nil {
 		log.Fatalf("Невозможно получить список облигаций, ошибка - %s", err)
 	}
-	CreateBondsMap(bonds, Stocks)
+	createBondsMap(bonds, stocks)
 
 	etfs, err := srv.GetETFsBase()
 	if err != nil {
 		log.Fatalf("Невозможно получить список фондов, ошибка - %s", err)
 	}
-	CreateETFsMap(etfs, Stocks)
+	createETFsMap(etfs, stocks)
+
+	return stocks
 }
 
-func CreateSharesMap(shares []*investapi.Share, Stocks map[string]entities.Stock) {
+func createSharesMap(shares []*investapi.Share, stocks map[string]entities.Stock) {
 	for _, v := range shares {
-		if v.ApiTradeAvailableFlag && v.BuyAvailableFlag {
+		if v.ApiTradeAvailableFlag && v.BuyAvailableFlag && v.Currency == "rub" {
 			price, err := utils.GetPrice(v.Figi, PriceMap)
-			if err == nil {
-				Stocks[v.Ticker] = entities.Stock{
-					Figi: v.Figi,
+			if err == nil && price != 0 {
+				stocks[v.Ticker] = entities.Stock{
 					Lot: int(v.Lot),
 					Price: price,
-					Currency: v.Currency,
 					AciValue: -1,
 				}
 			} else {
-				fmt.Printf("Тикер: %s, Ошибка: %e\n", v.Ticker, err)
+				stocks[v.Ticker] = Stocks[v.Ticker]
 			}
 		}
 	}
 }
 
-func CreateBondsMap(bonds []*investapi.Bond, Stocks map[string]entities.Stock) {
+func createBondsMap(bonds []*investapi.Bond, stocks map[string]entities.Stock) {
 	for _, v := range bonds {
-		if v.ApiTradeAvailableFlag && v.BuyAvailableFlag {
+		if v.ApiTradeAvailableFlag && v.BuyAvailableFlag && v.Currency == "rub" {
 			price, err := utils.GetPrice(v.Figi, PriceMap)
-			if err == nil {
-				Stocks[v.Ticker] = entities.Stock{
-					Figi: v.Figi,
+			if err == nil && price != 0 {
+				stocks[v.Ticker] = entities.Stock{
 					Lot: int(v.Lot),
 					Price: price * 0.01 * utils.MoneyValueToFloat64(v.Nominal),
-					Currency: v.Currency,
 					AciValue: utils.MoneyValueToFloat64(v.AciValue),
 				}
 			} else {
-				fmt.Printf("Тикер: %s, Ошибка: %e\n", v.Ticker, err)
+				stocks[v.Ticker] = Stocks[v.Ticker]
 			}
 		}
 	}
 }
 
-func CreateETFsMap(etfs []*investapi.Etf, Stocks map[string]entities.Stock) {
+func createETFsMap(etfs []*investapi.Etf, stocks map[string]entities.Stock) {
 	for _, v := range etfs {
-		if v.ApiTradeAvailableFlag && v.BuyAvailableFlag {
+		if v.ApiTradeAvailableFlag && v.BuyAvailableFlag && v.Currency == "rub" {
 			price, err := utils.GetPrice(v.Figi, PriceMap)
-			if err == nil {
-				Stocks[v.Ticker] = entities.Stock{
-					Figi: v.Figi,
+			if err == nil && price != 0 {
+				stocks[v.Ticker] = entities.Stock{
 					Lot: int(v.Lot),
 					Price: price,
-					Currency: v.Currency,
 					AciValue: -1,
 				}
 			} else {
-				fmt.Printf("Тикер: %s, Ошибка: %e\n", v.Ticker, err)
+				stocks[v.Ticker] = Stocks[v.Ticker]
 			}
 		}
 	}
-}
-
-func IsAllocValid[num int | float64](alloc map[string]num) error {
-	for ticker := range alloc {
-		_, exists := Stocks[ticker]
-		if !exists {
-			return fmt.Errorf("не удалась получить данные о активе с тикером %s", ticker)
-		}
-	}
-	return nil
 }

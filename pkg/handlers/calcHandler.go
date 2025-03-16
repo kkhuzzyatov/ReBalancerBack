@@ -4,14 +4,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"gomod/pkg/entities"
-	"gomod/pkg/stocks"
+	"gomod/pkg/tBankAPI"
 	"gomod/pkg/utils"
+	"math"
 
-	// "gomod/pkg/utils"
 	"net/http"
 )
 
 func Calc(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	
   if r.Method != http.MethodPost {
 		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
 		return
@@ -26,62 +35,79 @@ func Calc(w http.ResponseWriter, r *http.Request) {
 	
 	curAlloc := user.CurAllocation
 	targetAlloc := user.TargetAllocation
+	cash := user.Cash
+	
+	tBankAPI.Mutex.Lock()
+	response := CalcRebalance(utils.AllocationParser[int](curAlloc), utils.AllocationParser[float64](targetAlloc), cash, tBankAPI.Stocks)
+	tBankAPI.Mutex.Unlock()
 
-	// 	err = stocks.IsAllocValid[int](utils.AllocationParser[int](user.CurAllocation)) 
-	// 	if err != nil {
-	// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-	// 		return
-	// }
-	// 	err = stocks.IsAllocValid[float64](utils.AllocationParser[float64](user.TargetAllocation)) 
-	// 	if err != nil {
-	// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-	// 		return
-	// 	}
+	type ResponseStruct struct {
+		Response string `json:"response"`
+	}
 
-	response := CalcRebalance(utils.AllocationParser[int](curAlloc), utils.AllocationParser[float64](targetAlloc), stocks.Stocks)
+	responseStruct := ResponseStruct{
+			Response: response,
+	}
 
-	w.Write([]byte(response))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(responseStruct)
 }
 
-func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float64, Stocks map[string]entities.Stock) string {
-	result := "Актуальные данные по текущий конфигурации активов портфеля:\n"
+func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float64, cash float64, stocks map[string]entities.Stock) string {
+	curAlloc = utils.СonvertKeysToUpperCase(curAlloc)
+	targetAllocPercent = utils.СonvertKeysToUpperCase(targetAllocPercent)
+
+	for key := range targetAllocPercent {
+		_, exists := curAlloc[key]
+		if !exists {
+				curAlloc[key] = 0
+		}
+	}
+
+	result := "Актуальные данные по вашим активам:\n"
 	var totalBalance float64 = 0
 	for ticker, number := range curAlloc {
-		if Stocks[ticker].AciValue != -1 {
-			result += fmt.Sprintf("%s: Цена: %.2f, Накопленный купонный доход: %.2f, Полная стоимость: %.2f, Полная стоимость одного лота: %.2f\n", ticker, Stocks[ticker].Price, Stocks[ticker].AciValue, Stocks[ticker].Price + Stocks[ticker].AciValue, (Stocks[ticker].Price + Stocks[ticker].AciValue) * float64(Stocks[ticker].Lot))
+		if stocks[ticker].AciValue != -1 {
+			result += fmt.Sprintf("%s: Цена: %.2f, Накопленный купонный доход: %.2f, Полная стоимость: %.2f, Полная стоимость одного лота: %.2f\n", ticker, stocks[ticker].Price, stocks[ticker].AciValue, stocks[ticker].Price + stocks[ticker].AciValue, (stocks[ticker].Price + stocks[ticker].AciValue) * float64(stocks[ticker].Lot))
 		} else {
-			result += fmt.Sprintf("%s: Цена: %.2f, Полная стоимость одного лота: %.2f\n", ticker, Stocks[ticker].Price, Stocks[ticker].Price * float64(Stocks[ticker].Lot))
+			result += fmt.Sprintf("%s: Цена: %.2f, Полная стоимость одного лота: %.2f\n", ticker, stocks[ticker].Price, stocks[ticker].Price * float64(stocks[ticker].Lot))
 		}
 		
-		if (Stocks[ticker].Lot == 0) {
+		if (stocks[ticker].Lot == 0) {
 			continue
 		}
-		totalBalance += float64(number) * Stocks[ticker].Price
+		totalBalance += float64(number) * stocks[ticker].Price
 	}
-	result += fmt.Sprintf("\nСовокупная стоимость активов: %.2f RUB\n", totalBalance)
+	totalBalance += float64(cash)
+	result += fmt.Sprintf("\nСовокупная стоимость активов с учётом пополнения: %.2f RUB\n", totalBalance)
+	cash = totalBalance
 
 	result += "\nЧтобы привести портфель в соответствие с целевыми пропорциями нужно:\n"
 	targetAllocAmount := make(map[string]int)
 	sellOrders := make(map[string]int)
 	for ticker, number := range curAlloc {
-		if (Stocks[ticker].Lot == 0) {
+		if (stocks[ticker].Lot == 0) {
 			continue
 		}
-		targetAllocAmount[ticker] = int(totalBalance * targetAllocPercent[ticker] * 0.01 / Stocks[ticker].Price)
-		sellOrders[ticker] = int((number - targetAllocAmount[ticker]) / Stocks[ticker].Lot)
+		targetAllocAmount[ticker] = int(math.Floor(totalBalance * targetAllocPercent[ticker] * 0.01 / stocks[ticker].Price))
+		sellOrders[ticker] = number - targetAllocAmount[ticker]
 		if sellOrders[ticker] < 0 {
-			result += fmt.Sprintf("Купить %d лотов %s\n", -sellOrders[ticker], ticker)
+			sellOrders[ticker] = int(math.Floor(float64(sellOrders[ticker]) / float64(stocks[ticker].Lot)))
+			result += fmt.Sprintf("Купить %d лотов %s (%d штук)\n", -sellOrders[ticker], ticker, -sellOrders[ticker] * stocks[ticker].Lot)
 		} else if sellOrders[ticker] != 0 {
-			result += fmt.Sprintf("Продать %d лотов %s\n", sellOrders[ticker], ticker)
+			sellOrders[ticker] = int(math.Ceil(float64(sellOrders[ticker]) / float64(stocks[ticker].Lot)))
+			result += fmt.Sprintf("Продать %d лотов %s (%d штук)\n", sellOrders[ticker], ticker, sellOrders[ticker] * stocks[ticker].Lot)
 		}
+		cash -= float64(number - sellOrders[ticker] * stocks[ticker].Lot) * stocks[ticker].Price
 	}
 
 	result += "\nИтоговая структура активов:\n"
+	result += fmt.Sprintf("RUB: %.2f\n", cash)
 	for ticker, number := range curAlloc {
-		if (Stocks[ticker].Lot == 0) {
+		if (stocks[ticker].Lot == 0) {
 			continue
 		}
-		result += fmt.Sprintf("%s: %d\n", ticker, number - sellOrders[ticker])
+		result += fmt.Sprintf("%s: %d\n", ticker, number - sellOrders[ticker] * stocks[ticker].Lot)
 	}
 
 	return result

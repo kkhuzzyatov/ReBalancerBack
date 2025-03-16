@@ -3,43 +3,20 @@ package utils
 import (
 	"context"
 	"errors"
-	"fmt"
 	"gomod/config"
-	"net/mail"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ssummers02/invest-api-go-sdk/pkg/investapi"
-	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func QuotationToFloat(q *investapi.Quotation) (float64, error) {
-	if q == nil {
-		return 0, errors.New("не удалось получить цену последней сделки")
-	}
-	return float64(q.Units) + float64(q.Nano)/1_000_000_000.0, nil
-}
-
 func MoneyValueToFloat64(mv *investapi.MoneyValue) float64 {
 	return float64(mv.Units) + float64(mv.Nano) / 1_000_000_000.0
-}
-
-func CreatePriceMap(lastPrices []*investapi.LastPrice) map[string]float64 {
-	priceMap := make(map[string]float64)
-	for _, p := range lastPrices {
-		if p.Price != nil {
-			price, err := QuotationToFloat(p.Price)
-			if err == nil {
-				priceMap[p.Figi] = price
-			}
-		}
-	}
-	return priceMap
 }
 
 func GetPrice(figi string, priceMap map[string]float64) (float64, error) {
@@ -57,13 +34,13 @@ func GetPrice(figi string, priceMap map[string]float64) (float64, error) {
 func GetPriceOfCloseLastTradeDay(figi string) (float64, error) {
 	conn, err := grpc.Dial("invest-public-api.tinkoff.ru:443", grpc.WithTransportCredentials(credentials.NewTLS(nil)))
 	if err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)
 	}
 	defer conn.Close()
 	client := investapi.NewMarketDataServiceClient(conn)
 
 	i := 0
-	for i < 5 {
+	for i < 3 {
 		i++
 		endTime := time.Now().AddDate(0, 0, 0)
 		startTime := time.Now().AddDate(0, 0, -i)
@@ -83,16 +60,7 @@ func GetPriceOfCloseLastTradeDay(figi string) (float64, error) {
 		}
 	}
 	
-	return 0, errors.New("по позиции отсутствуют сделки за последние 5 дней")
-}
-
-func CheckEmail(email string) bool {
-	_, err := mail.ParseAddress(email)
-	return err == nil
-}
-
-func CheckPassword(password string) bool {
-	return len(password) >= 8
+	return 0, errors.New("по позиции отсутствуют сделки за последние 3 дней")
 }
 
 func AllocationParser[num int | float64](alloc string) map[string]num {
@@ -113,16 +81,10 @@ func AllocationParser[num int | float64](alloc string) map[string]num {
 	return allocMap
 }
 
-func HashPassword(password string) (string, error) {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", err
+func СonvertKeysToUpperCase[V any](m map[string]V) map[string]V {
+	result := make(map[string]V)
+	for key, value := range m {
+		result[strings.ToUpper(key)] = value
 	}
-
-	return string(hashedPassword), nil
-}
-
-func CompareHashAndPassword(password string, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
+	return result
 }

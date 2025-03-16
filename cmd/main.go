@@ -1,39 +1,41 @@
 package main
 
 import (
+	"fmt"
 	"gomod/pkg/handlers"
-	"gomod/pkg/repository"
-	"gomod/pkg/stocks"
+	"gomod/pkg/tBankAPI"
 	"log"
 	"net/http"
+	"time"
 
 	_ "github.com/lib/pq"
 )
 
 func main() {
-	stocks.InitializeData()
-
-	repository.InitDB()
-
-	http.HandleFunc("/calc", corsMiddleware(handlers.Calc))
+	fmt.Println("программа запущена")
   
-  err := http.ListenAndServe(":8080", nil)
-  if err != nil {
-    log.Fatal(err)
-  }
+  fmt.Println("stocks loading is started")
+	stockList := tBankAPI.FetchAssetsData()
+	fmt.Println("stocks loading is done")
+	tBankAPI.Stocks = stockList
+
+	http.HandleFunc("/calc", handlers.Calc)
+	
+	go runServer()
+
+	for {
+		stockList := tBankAPI.FetchAssetsData()
+		tBankAPI.Mutex.Lock()
+		tBankAPI.Stocks = stockList
+		tBankAPI.Mutex.Unlock()
+		fmt.Println(time.Now().Format("2006-01-02 15:04:05") + ": updating stocks is done")
+	}
 }
 
-func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		next(w, r)
+func runServer(){
+	fmt.Println("server is running")
+	err := http.ListenAndServe("0.0.0.0:8080", nil)
+	if err != nil {
+		log.Fatal(err)
 	}
 }
