@@ -126,7 +126,9 @@ func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float6
 		if (stocks[ticker].Lot == 0) {
 			continue
 		}
-		result += fmt.Sprintf("%s: %d\n", ticker, number - sellOrders[ticker] * stocks[ticker].Lot)
+		if number - sellOrders[ticker] * stocks[ticker].Lot > 0 {
+			result += fmt.Sprintf("%s: %d\n", ticker, number - sellOrders[ticker] * stocks[ticker].Lot)
+		}
 	}
 
 	return result
