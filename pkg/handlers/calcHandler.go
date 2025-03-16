@@ -92,7 +92,7 @@ func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float6
 		targetAllocAmount[ticker] = int(math.Floor(totalBalance * targetAllocPercent[ticker] * 0.01 / stocks[ticker].Price))
 		sellOrders[ticker] = number - targetAllocAmount[ticker]
 		if sellOrders[ticker] < 0 {
-			sellOrders[ticker] = int(math.Floor(float64(sellOrders[ticker]) / float64(stocks[ticker].Lot)))
+			sellOrders[ticker] = int(math.Ceil(float64(sellOrders[ticker]) / float64(stocks[ticker].Lot)))
 			result += fmt.Sprintf("Купить %d лотов %s (%d штук)\n", -sellOrders[ticker], ticker, -sellOrders[ticker] * stocks[ticker].Lot)
 		} else if sellOrders[ticker] != 0 {
 			sellOrders[ticker] = int(math.Ceil(float64(sellOrders[ticker]) / float64(stocks[ticker].Lot)))
