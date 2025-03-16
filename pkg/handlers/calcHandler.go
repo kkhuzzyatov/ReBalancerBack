@@ -66,6 +66,7 @@ func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float6
 
 	result := "Актуальные данные по вашим активам:\n"
 	var totalBalance float64 = 0
+	minLotPrice := math.MaxFloat64
 	for ticker, number := range curAlloc {
 		if stocks[ticker].AciValue != -1 {
 			result += fmt.Sprintf("%s: Цена: %.2f, Накопленный купонный доход: %.2f, Полная стоимость: %.2f, Полная стоимость одного лота: %.2f\n", ticker, stocks[ticker].Price, stocks[ticker].AciValue, stocks[ticker].Price + stocks[ticker].AciValue, (stocks[ticker].Price + stocks[ticker].AciValue) * float64(stocks[ticker].Lot))
@@ -77,12 +78,15 @@ func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float6
 			continue
 		}
 		totalBalance += float64(number) * stocks[ticker].Price
+
+		if minLotPrice > stocks[ticker].Price * float64(stocks[ticker].Lot) {
+			minLotPrice = stocks[ticker].Price * float64(stocks[ticker].Lot)
+		}
 	}
 	totalBalance += float64(cash)
 	result += fmt.Sprintf("\nСовокупная стоимость активов с учётом пополнения: %.2f RUB\n", totalBalance)
 	cash = totalBalance
 
-	result += "\nЧтобы привести портфель в соответствие с целевыми пропорциями нужно:\n"
 	targetAllocAmount := make(map[string]int)
 	sellOrders := make(map[string]int)
 	for ticker, number := range curAlloc {
@@ -93,12 +97,27 @@ func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float6
 		sellOrders[ticker] = number - targetAllocAmount[ticker]
 		if sellOrders[ticker] < 0 {
 			sellOrders[ticker] = int(math.Ceil(float64(sellOrders[ticker]) / float64(stocks[ticker].Lot)))
-			result += fmt.Sprintf("Купить %d лотов %s (%d штук)\n", -sellOrders[ticker], ticker, -sellOrders[ticker] * stocks[ticker].Lot)
 		} else if sellOrders[ticker] != 0 {
 			sellOrders[ticker] = int(math.Ceil(float64(sellOrders[ticker]) / float64(stocks[ticker].Lot)))
-			result += fmt.Sprintf("Продать %d лотов %s (%d штук)\n", sellOrders[ticker], ticker, sellOrders[ticker] * stocks[ticker].Lot)
 		}
 		cash -= float64(number - sellOrders[ticker] * stocks[ticker].Lot) * stocks[ticker].Price
+	}
+
+	for cash > minLotPrice {
+		for ticker := range curAlloc {
+			if stocks[ticker].Price * float64(stocks[ticker].Lot) < cash {
+				sellOrders[ticker] += 1
+				cash -= stocks[ticker].Price * float64(stocks[ticker].Lot)
+			}
+		}
+	} 
+
+	for ticker := range curAlloc {
+		if sellOrders[ticker] < 0 {
+			result += fmt.Sprintf("Купить %d лотов %s (%d штук)\n", -sellOrders[ticker], ticker, -sellOrders[ticker] * stocks[ticker].Lot)
+		} else if sellOrders[ticker] != 0 {
+			result += fmt.Sprintf("Продать %d лотов %s (%d штук)\n", sellOrders[ticker], ticker, sellOrders[ticker] * stocks[ticker].Lot)
+		}
 	}
 
 	result += "\nИтоговая структура активов:\n"
