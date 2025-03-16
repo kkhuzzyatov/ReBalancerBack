@@ -67,6 +67,9 @@ func AllocationParser[num int | float64](alloc string) map[string]num {
 	allocMap := make(map[string]num)
 	for _, item := range strings.Split(alloc, ";") {
 		parts := strings.Split(item, "=")
+		if parts == nil || len(parts) < 2 {
+			continue
+		}
 		var val num
 		switch any(val).(type) {
 		case int:
