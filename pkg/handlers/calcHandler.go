@@ -53,7 +53,7 @@ func Calc(w http.ResponseWriter, r *http.Request) {
 }
 
 func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float64, stocks map[string]entities.Stock) string {
-	curAlloc["RUB"] = 0
+	targetAllocPercent["RUB"] = 0
 	result := ""
 	curAlloc = utils.СonvertKeysToUpperCase(curAlloc)
 	targetAllocPercent = utils.СonvertKeysToUpperCase(targetAllocPercent)
