@@ -35,10 +35,9 @@ func Calc(w http.ResponseWriter, r *http.Request) {
 	
 	curAlloc := user.CurAllocation
 	targetAlloc := user.TargetAllocation
-	cash := user.Cash
 	
 	tBankAPI.Mutex.Lock()
-	response := CalcRebalance(utils.AllocationParser[int](curAlloc), utils.AllocationParser[float64](targetAlloc), cash, tBankAPI.Stocks)
+	response := CalcRebalance(utils.AllocationParser[int](curAlloc), utils.AllocationParser[float64](targetAlloc), tBankAPI.Stocks)
 	tBankAPI.Mutex.Unlock()
 
 	type ResponseStruct struct {
@@ -53,21 +52,35 @@ func Calc(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(responseStruct)
 }
 
-func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float64, cash float64, stocks map[string]entities.Stock) string {
+func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float64, stocks map[string]entities.Stock) string {
+	curAlloc["RUB"] = 0
+	result := ""
 	curAlloc = utils.СonvertKeysToUpperCase(curAlloc)
 	targetAllocPercent = utils.СonvertKeysToUpperCase(targetAllocPercent)
 
-	for key := range targetAllocPercent {
+	var sumOfPercentInTargetAlloc float64 = 0
+	for key, percent := range targetAllocPercent {
 		_, exists := curAlloc[key]
 		if !exists {
 				curAlloc[key] = 0
 		}
+		sumOfPercentInTargetAlloc += percent
+	}
+	
+	if sumOfPercentInTargetAlloc != 100 {
+		result = fmt.Sprintf("Ошибка: сумма процентов целевого распределения должна быть 100, а не %.2f.", sumOfPercentInTargetAlloc)
+		return result
 	}
 
-	result := "Актуальные данные по вашим активам:\n"
+	result = "Актуальные данные по вашим активам:\n"
 	var totalBalance float64 = 0
 	minLotPrice := math.MaxFloat64
 	for ticker, number := range curAlloc {
+		if stocks[ticker].Price <= 0 {
+			result = fmt.Sprintf("Ошибка: Не удалось получить данные актива с тикером %s.", ticker)
+			return result
+		}
+
 		if stocks[ticker].AciValue != -1 {
 			result += fmt.Sprintf("%s: Цена: %.2f, Накопленный купонный доход: %.2f, Полная стоимость: %.2f, Полная стоимость одного лота: %.2f\n", ticker, stocks[ticker].Price, stocks[ticker].AciValue, stocks[ticker].Price + stocks[ticker].AciValue, (stocks[ticker].Price + stocks[ticker].AciValue) * float64(stocks[ticker].Lot))
 		} else {
@@ -83,9 +96,8 @@ func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float6
 			minLotPrice = stocks[ticker].Price * float64(stocks[ticker].Lot)
 		}
 	}
-	totalBalance += float64(cash)
 	result += fmt.Sprintf("\nСовокупная стоимость активов с учётом пополнения: %.2f RUB\n", totalBalance)
-	cash = totalBalance
+	cash := totalBalance
 
 	targetAllocAmount := make(map[string]int)
 	sellOrders := make(map[string]int)
@@ -104,9 +116,9 @@ func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float6
 	}
 
 	for cash > minLotPrice {
-		for ticker := range curAlloc {
+		for ticker := range targetAllocPercent {
 			if stocks[ticker].Price * float64(stocks[ticker].Lot) < cash {
-				sellOrders[ticker] += 1
+				sellOrders[ticker] --
 				cash -= stocks[ticker].Price * float64(stocks[ticker].Lot)
 			}
 		}
@@ -119,17 +131,32 @@ func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float6
 			result += fmt.Sprintf("Продать %d лотов %s (%d штук)\n", sellOrders[ticker], ticker, sellOrders[ticker] * stocks[ticker].Lot)
 		}
 	}
-
+	
 	result += "\nИтоговая структура активов:\n"
-	result += fmt.Sprintf("RUB: %.2f\n", cash)
 	for ticker, number := range curAlloc {
 		if (stocks[ticker].Lot == 0) {
 			continue
 		}
 		if number - sellOrders[ticker] * stocks[ticker].Lot > 0 {
-			result += fmt.Sprintf("%s: %d\n", ticker, number - sellOrders[ticker] * stocks[ticker].Lot)
-		}
+			var numberOfAssets float64
+			if (ticker == "RUB") {
+				numberOfAssets = float64(number - sellOrders[ticker] * stocks[ticker].Lot) + cash
+			} else {
+				numberOfAssets = float64(number - sellOrders[ticker] * stocks[ticker].Lot)
+			}
+			
+			percentOfCapital := fmt.Sprintf("%.2f", roundToHundredths(numberOfAssets * stocks[ticker].Price / totalBalance * 100)) + "%"
+			if (ticker == "RUB") {
+				result += fmt.Sprintf("%s: %.2f (≈%s)\n", ticker, numberOfAssets, percentOfCapital)
+			} else {
+				result += fmt.Sprintf("%s: %d (≈%s)\n", ticker, int(numberOfAssets), percentOfCapital)
+			}
+		} 
 	}
 
 	return result
+}
+
+func roundToHundredths(num float64) float64 {
+	return math.Round(num * 100) / 100
 }

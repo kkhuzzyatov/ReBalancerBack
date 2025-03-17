@@ -27,6 +27,11 @@ func FetchAssetsData() map[string]entities.Stock {
 	}
 
 	stocks := make(map[string]entities.Stock)
+	stocks["RUB"] = entities.Stock{
+		Lot: 1, 
+		Price: 1,
+		AciValue: -1,
+	}
 
 	shares, err := srv.GetSharesBase()
 	if err != nil {
