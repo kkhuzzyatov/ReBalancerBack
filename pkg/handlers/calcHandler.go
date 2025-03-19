@@ -53,7 +53,10 @@ func Calc(w http.ResponseWriter, r *http.Request) {
 }
 
 func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float64, stocks map[string]entities.Stock) string {
-	targetAllocPercent["RUB"] = 0
+	_, exists := targetAllocPercent["RUB"]
+	if !exists {
+		targetAllocPercent["RUB"] = 0
+	}
 	result := ""
 	curAlloc = utils.СonvertKeysToUpperCase(curAlloc)
 	targetAllocPercent = utils.СonvertKeysToUpperCase(targetAllocPercent)
@@ -125,6 +128,9 @@ func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float6
 	} 
 
 	for ticker := range curAlloc {
+		if ticker == "RUB" {
+			continue
+		}
 		if sellOrders[ticker] < 0 {
 			result += fmt.Sprintf("Купить %d лотов %s (%d штук)\n", -sellOrders[ticker], ticker, -sellOrders[ticker] * stocks[ticker].Lot)
 		} else if sellOrders[ticker] != 0 {
