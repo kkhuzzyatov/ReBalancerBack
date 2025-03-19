@@ -7,6 +7,7 @@ import (
 	"gomod/pkg/tBankAPI"
 	"gomod/pkg/utils"
 	"math"
+	"strings"
 
 	"net/http"
 )
@@ -53,13 +54,14 @@ func Calc(w http.ResponseWriter, r *http.Request) {
 }
 
 func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float64, stocks map[string]entities.Stock) string {
+	result := ""
+	curAlloc = utils.СonvertKeysToUpperCase(curAlloc)
+	targetAllocPercent = utils.СonvertKeysToUpperCase(targetAllocPercent)
+
 	_, exists := targetAllocPercent["RUB"]
 	if !exists {
 		targetAllocPercent["RUB"] = 0
 	}
-	result := ""
-	curAlloc = utils.СonvertKeysToUpperCase(curAlloc)
-	targetAllocPercent = utils.СonvertKeysToUpperCase(targetAllocPercent)
 
 	var sumOfPercentInTargetAlloc float64 = 0
 	for key, percent := range targetAllocPercent {
@@ -70,7 +72,7 @@ func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float6
 		sumOfPercentInTargetAlloc += percent
 	}
 	
-	if sumOfPercentInTargetAlloc != 100 {
+	if 99.999 > sumOfPercentInTargetAlloc || sumOfPercentInTargetAlloc > 100.001 {
 		result = fmt.Sprintf("Ошибка: сумма процентов целевого распределения должна быть 100, а не %.2f.", sumOfPercentInTargetAlloc)
 		return result
 	}
@@ -128,7 +130,7 @@ func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float6
 	} 
 
 	for ticker := range curAlloc {
-		if ticker == "RUB" {
+		if strings.ToUpper(ticker) == "RUB" {
 			continue
 		}
 		if sellOrders[ticker] < 0 {
