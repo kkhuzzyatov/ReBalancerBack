@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"gomod/config"
-	"strconv"
 	"strings"
 	"time"
 
@@ -16,11 +15,11 @@ import (
 )
 
 func MoneyValueToFloat64(mv *investapi.MoneyValue) float64 {
-	return float64(mv.Units) + float64(mv.Nano) / 1_000_000_000.0
+	return float64(mv.Units) + float64(mv.Nano)/1_000_000_000.0
 }
 
 func GetPrice(figi string, priceMap map[string]float64) (float64, error) {
-	price, exists := priceMap[figi];
+	price, exists := priceMap[figi]
 	if exists && price != 0 {
 		return price, nil
 	}
@@ -44,7 +43,7 @@ func GetPriceOfCloseLastTradeDay(figi string) (float64, error) {
 		i++
 		endTime := time.Now().AddDate(0, 0, 0)
 		startTime := time.Now().AddDate(0, 0, -i)
-		ctx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs("authorization", "Bearer " + config.GetTokenOfTBank()))
+		ctx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+config.GetTokenOfTBank()))
 
 		candlesResp, err := client.GetCandles(ctx, &investapi.GetCandlesRequest{
 			Figi:     figi,
@@ -59,29 +58,8 @@ func GetPriceOfCloseLastTradeDay(figi string) (float64, error) {
 			return float64(candlesResp.Candles[0].Close.Units) + float64(candlesResp.Candles[0].Close.Nano)/1_000_000_000.0, nil
 		}
 	}
-	
+
 	return 0, errors.New("по позиции отсутствуют сделки за последние 3 дней")
-}
-
-func AllocationParser[num int | float64](alloc string) map[string]num {
-	allocMap := make(map[string]num)
-	for _, item := range strings.Split(alloc, ";") {
-		parts := strings.Split(item, "=")
-		if parts == nil || len(parts) < 2 {
-			continue
-		}
-		var val num
-		switch any(val).(type) {
-		case int:
-			val, _ := strconv.Atoi(parts[1])
-			allocMap[parts[0]] = num(val)
-		case float64:
-			val, _ := strconv.ParseFloat(parts[1], 64)
-			allocMap[parts[0]] = num(val)
-		}
-	}
-
-	return allocMap
 }
 
 func СonvertKeysToUpperCase[V any](m map[string]V) map[string]V {

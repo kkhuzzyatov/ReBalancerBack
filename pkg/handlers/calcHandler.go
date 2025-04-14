@@ -13,48 +13,46 @@ import (
 )
 
 func Calc(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	// w.Header().Set("Access-Control-Allow-Origin", "*")
+	// w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+	// w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	
-  if r.Method != http.MethodPost {
+	// if r.Method == http.MethodOptions {
+	// 	w.WriteHeader(http.StatusOK)
+	// 	return
+	// }
+
+	if r.Method != http.MethodPost {
 		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var user entities.User
+	var user entities.CalcRequest
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
-			http.Error(w, "Ошибка декодирования JSON", http.StatusBadRequest)
-			return
+		http.Error(w, "Ошибка декодирования JSON", http.StatusBadRequest)
+		return
 	}
-	
-	curAlloc := user.CurAllocation
-	targetAlloc := user.TargetAllocation
-	
+
 	tBankAPI.Mutex.Lock()
-	response := CalcRebalance(utils.AllocationParser[int](curAlloc), utils.AllocationParser[float64](targetAlloc), tBankAPI.Stocks)
+	response := CalcRebalance(user.CurAllocation, user.TargetAllocation, tBankAPI.Stocks)
 	tBankAPI.Mutex.Unlock()
 
-	type ResponseStruct struct {
-		Response string `json:"response"`
-	}
-
-	responseStruct := ResponseStruct{
-			Response: response,
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(responseStruct)
+	json.NewEncoder(w).Encode(response)
 }
 
-func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float64, stocks map[string]entities.Stock) string {
-	result := ""
+func CalcRebalance(curAllocation []entities.CurAllocation, targetAlloc []entities.TargetAllocation, stocks map[string]entities.Stock) entities.CalcResponse {
+	var curAlloc = make(map[string]int)
+	var targetAllocPercent = make(map[string]float64)
+	for _, field := range curAllocation {
+		curAlloc[field.Ticker] = field.Number
+	}
+	for _, field := range targetAlloc {
+		targetAllocPercent[field.Ticker] = field.Percent
+	}
+
+	var response entities.CalcResponse
 	curAlloc = utils.СonvertKeysToUpperCase(curAlloc)
 	targetAllocPercent = utils.СonvertKeysToUpperCase(targetAllocPercent)
 
@@ -67,47 +65,42 @@ func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float6
 	for key, percent := range targetAllocPercent {
 		_, exists := curAlloc[key]
 		if !exists {
-				curAlloc[key] = 0
+			curAlloc[key] = 0
 		}
 		sumOfPercentInTargetAlloc += percent
 	}
-	
+
 	if 99.999 > sumOfPercentInTargetAlloc || sumOfPercentInTargetAlloc > 100.001 {
-		result = fmt.Sprintf("Ошибка: сумма процентов целевого распределения должна быть 100, а не %.2f.", sumOfPercentInTargetAlloc)
-		return result
+		response.Err = fmt.Sprintf("Ошибка: сумма процентов целевого распределения должна быть 100, а не %.2f.", sumOfPercentInTargetAlloc)
+		return response
 	}
 
-	result = "Актуальные данные по вашим активам:\n"
 	var totalBalance float64 = 0
 	minLotPrice := math.MaxFloat64
 	for ticker, number := range curAlloc {
 		if stocks[ticker].Price <= 0 {
-			result = fmt.Sprintf("Ошибка: Не удалось получить данные актива с тикером %s.", ticker)
-			return result
+			response.Err = fmt.Sprintf("Ошибка: Не удалось получить данные актива с тикером %s.", ticker)
+			return response
 		}
 
-		if stocks[ticker].AciValue != -1 {
-			result += fmt.Sprintf("%s: Цена: %.2f, Накопленный купонный доход: %.2f, Полная стоимость: %.2f, Полная стоимость одного лота: %.2f\n", ticker, stocks[ticker].Price, stocks[ticker].AciValue, stocks[ticker].Price + stocks[ticker].AciValue, (stocks[ticker].Price + stocks[ticker].AciValue) * float64(stocks[ticker].Lot))
-		} else {
-			result += fmt.Sprintf("%s: Цена: %.2f, Полная стоимость одного лота: %.2f\n", ticker, stocks[ticker].Price, stocks[ticker].Price * float64(stocks[ticker].Lot))
-		}
-		
-		if (stocks[ticker].Lot == 0) {
+		if stocks[ticker].Lot == 0 {
 			continue
 		}
+
+		response.StockData = append(response.StockData, stocks[ticker])
 		totalBalance += float64(number) * stocks[ticker].Price
 
-		if minLotPrice > stocks[ticker].Price * float64(stocks[ticker].Lot) {
+		if minLotPrice > stocks[ticker].Price*float64(stocks[ticker].Lot) {
 			minLotPrice = stocks[ticker].Price * float64(stocks[ticker].Lot)
 		}
 	}
-	result += fmt.Sprintf("\nСовокупная стоимость активов с учётом пополнения: %.2f RUB\n", totalBalance)
+	response.TotalValue = totalBalance
 	cash := totalBalance
 
 	targetAllocAmount := make(map[string]int)
 	sellOrders := make(map[string]int)
 	for ticker, number := range curAlloc {
-		if (stocks[ticker].Lot == 0) {
+		if stocks[ticker].Lot == 0 {
 			continue
 		}
 		targetAllocAmount[ticker] = int(math.Floor(totalBalance * targetAllocPercent[ticker] * 0.01 / stocks[ticker].Price))
@@ -117,54 +110,67 @@ func CalcRebalance(curAlloc map[string]int, targetAllocPercent map[string]float6
 		} else if sellOrders[ticker] != 0 {
 			sellOrders[ticker] = int(math.Ceil(float64(sellOrders[ticker]) / float64(stocks[ticker].Lot)))
 		}
-		cash -= float64(number - sellOrders[ticker] * stocks[ticker].Lot) * stocks[ticker].Price
+		cash -= float64(number-sellOrders[ticker]*stocks[ticker].Lot) * stocks[ticker].Price
 	}
 
 	for cash > minLotPrice {
 		for ticker := range targetAllocPercent {
-			if stocks[ticker].Price * float64(stocks[ticker].Lot) < cash {
-				sellOrders[ticker] --
+			if stocks[ticker].Price*float64(stocks[ticker].Lot) < cash {
+				sellOrders[ticker]--
 				cash -= stocks[ticker].Price * float64(stocks[ticker].Lot)
 			}
 		}
-	} 
+	}
 
 	for ticker := range curAlloc {
 		if strings.ToUpper(ticker) == "RUB" {
 			continue
 		}
 		if sellOrders[ticker] < 0 {
-			result += fmt.Sprintf("Купить %d лотов %s (%d штук)\n", -sellOrders[ticker], ticker, -sellOrders[ticker] * stocks[ticker].Lot)
+			response.Orders = append(response.Orders, entities.Order{
+				Ticker:    ticker,
+				NumberLot: -sellOrders[ticker],
+			})
 		} else if sellOrders[ticker] != 0 {
-			result += fmt.Sprintf("Продать %d лотов %s (%d штук)\n", sellOrders[ticker], ticker, sellOrders[ticker] * stocks[ticker].Lot)
+			response.Orders = append(response.Orders, entities.Order{
+				Ticker:    ticker,
+				NumberLot: sellOrders[ticker],
+			})
 		}
-	}
-	
-	result += "\nИтоговая структура активов:\n"
-	for ticker, number := range curAlloc {
-		if (stocks[ticker].Lot == 0) {
-			continue
-		}
-		if number - sellOrders[ticker] * stocks[ticker].Lot > 0 {
-			var numberOfAssets float64
-			if (ticker == "RUB") {
-				numberOfAssets = float64(number - sellOrders[ticker] * stocks[ticker].Lot) + cash
-			} else {
-				numberOfAssets = float64(number - sellOrders[ticker] * stocks[ticker].Lot)
-			}
-			
-			percentOfCapital := fmt.Sprintf("%.2f", roundToHundredths(numberOfAssets * stocks[ticker].Price / totalBalance * 100)) + "%"
-			if (ticker == "RUB") {
-				result += fmt.Sprintf("%s: %.2f (≈%s)\n", ticker, numberOfAssets, percentOfCapital)
-			} else {
-				result += fmt.Sprintf("%s: %d (≈%s)\n", ticker, int(numberOfAssets), percentOfCapital)
-			}
-		} 
 	}
 
-	return result
+	for ticker, number := range curAlloc {
+		if stocks[ticker].Lot == 0 {
+			continue
+		}
+		if number-sellOrders[ticker]*stocks[ticker].Lot > 0 {
+			var numberOfAssets float64
+			if ticker == "RUB" {
+				numberOfAssets = float64(number-sellOrders[ticker]*stocks[ticker].Lot) + cash
+			} else {
+				numberOfAssets = float64(number - sellOrders[ticker]*stocks[ticker].Lot)
+			}
+
+			percentOfCapital := roundToHundredths(numberOfAssets * stocks[ticker].Price / totalBalance * 100)
+			if ticker == "RUB" {
+				response.FinalStructure = append(response.FinalStructure, entities.Position{
+					Ticker:           ticker,
+					Number:           numberOfAssets,
+					PercentOfCapital: percentOfCapital,
+				})
+			} else {
+				response.FinalStructure = append(response.FinalStructure, entities.Position{
+					Ticker:           ticker,
+					Number:           numberOfAssets,
+					PercentOfCapital: percentOfCapital,
+				})
+			}
+		}
+	}
+
+	return response
 }
 
 func roundToHundredths(num float64) float64 {
-	return math.Round(num * 100) / 100
+	return math.Round(num*100) / 100
 }

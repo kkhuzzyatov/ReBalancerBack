@@ -1,7 +1,8 @@
 package entities
 
 type Stock struct {
-	Lot      int
-	Price    float64
-	AciValue float64
+	Ticker   string  `json:ticker`
+	Lot      int     `json:"lot"`
+	Price    float64 `json:"price"`
+	AciValue float64 `json:"aci_value"`
 }

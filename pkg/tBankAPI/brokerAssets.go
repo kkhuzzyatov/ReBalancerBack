@@ -11,7 +11,7 @@ import (
 	"github.com/ssummers02/invest-api-go-sdk/pkg/investapi"
 )
 
-var PriceMap map[string]float64 
+var PriceMap map[string]float64
 var Stocks map[string]entities.Stock
 var Mutex sync.Mutex
 
@@ -28,8 +28,9 @@ func FetchAssetsData() map[string]entities.Stock {
 
 	stocks := make(map[string]entities.Stock)
 	stocks["RUB"] = entities.Stock{
-		Lot: 1, 
-		Price: 1,
+		Ticker:   "RUB",
+		Lot:      1,
+		Price:    1,
 		AciValue: -1,
 	}
 
@@ -60,8 +61,9 @@ func createSharesMap(shares []*investapi.Share, stocks map[string]entities.Stock
 			price, err := utils.GetPrice(v.Figi, PriceMap)
 			if err == nil && price != 0 {
 				stocks[v.Ticker] = entities.Stock{
-					Lot: int(v.Lot),
-					Price: price,
+					Ticker:   v.Ticker,
+					Lot:      int(v.Lot),
+					Price:    price,
 					AciValue: -1,
 				}
 			} else {
@@ -77,8 +79,9 @@ func createBondsMap(bonds []*investapi.Bond, stocks map[string]entities.Stock) {
 			price, err := utils.GetPrice(v.Figi, PriceMap)
 			if err == nil && price != 0 {
 				stocks[v.Ticker] = entities.Stock{
-					Lot: int(v.Lot),
-					Price: price * 0.01 * utils.MoneyValueToFloat64(v.Nominal),
+					Ticker:   v.Ticker,
+					Lot:      int(v.Lot),
+					Price:    price * 0.01 * utils.MoneyValueToFloat64(v.Nominal),
 					AciValue: utils.MoneyValueToFloat64(v.AciValue),
 				}
 			} else {
@@ -94,8 +97,9 @@ func createETFsMap(etfs []*investapi.Etf, stocks map[string]entities.Stock) {
 			price, err := utils.GetPrice(v.Figi, PriceMap)
 			if err == nil && price != 0 {
 				stocks[v.Ticker] = entities.Stock{
-					Lot: int(v.Lot),
-					Price: price,
+					Ticker:   v.Ticker,
+					Lot:      int(v.Lot),
+					Price:    price,
 					AciValue: -1,
 				}
 			} else {
