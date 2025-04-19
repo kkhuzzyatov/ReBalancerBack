@@ -22,9 +22,9 @@ func CreateStocksTable() error {
 	return nil
 }
 
-func InsertStock(stock entities.StockDB) error {
+func InsertStock(UserID int, Ticker string, Number int, TargetShare float64) error {
 	query := `INSERT INTO stocks (user_id, ticker, number, target_share) VALUES ($1, $2, $3, $4)`
-	_, err := DB.Exec(query, stock.UserID, stock.Ticker, stock.Number, stock.TargetShare)
+	_, err := DB.Exec(query, UserID, Ticker, Number, TargetShare)
 	if err != nil {
 		return fmt.Errorf("ошибка при добавлении актива: %v", err)
 	}

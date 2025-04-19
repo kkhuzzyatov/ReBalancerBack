@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-func FindUser(w http.ResponseWriter, r *http.Request) {
+func SaveHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
 		return
@@ -39,7 +39,15 @@ func FindUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.RespStr = "user is found"
+	for _, stock := range userFromRequest.CurAllocation {
+		database.InsertStock(userFromDB.ID, stock.Ticker, stock.Number, 0)
+	}
+
+	for _, stock := range userFromRequest.TargetAllocation {
+		database.InsertStock(userFromDB.ID, stock.Ticker, 0, stock.Percent)
+	}
+
+	response.RespStr = "user data is saved"
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }

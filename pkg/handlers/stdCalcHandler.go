@@ -12,16 +12,7 @@ import (
 	"net/http"
 )
 
-func Calc(w http.ResponseWriter, r *http.Request) {
-	// w.Header().Set("Access-Control-Allow-Origin", "*")
-	// w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-	// w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	// if r.Method == http.MethodOptions {
-	// 	w.WriteHeader(http.StatusOK)
-	// 	return
-	// }
-
+func CalcStd(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
 		return
@@ -35,14 +26,16 @@ func Calc(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tBankAPI.Mutex.Lock()
-	response := CalcRebalance(user.CurAllocation, user.TargetAllocation, tBankAPI.Stocks)
+	response := CalcRebalance(user.CurAllocation, user.TargetAllocation)
 	tBankAPI.Mutex.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
 
-func CalcRebalance(curAllocation []entities.CurAllocation, targetAlloc []entities.TargetAllocation, stocks map[string]entities.Stock) entities.CalcResponse {
+func CalcRebalance(curAllocation []entities.CurAllocation, targetAlloc []entities.TargetAllocation) entities.CalcResponse {
+	stocks := tBankAPI.Stocks
+
 	var curAlloc = make(map[string]int)
 	var targetAllocPercent = make(map[string]float64)
 	for _, field := range curAllocation {

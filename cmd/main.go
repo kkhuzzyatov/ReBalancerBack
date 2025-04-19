@@ -54,10 +54,12 @@ func main() {
 	fmt.Println("stocks loading is done")
 	tBankAPI.Stocks = stockList
 
-	http.HandleFunc("/calc", handlers.Calc)
+	http.HandleFunc("/calc", handlers.CalcStd)
 	http.HandleFunc("/signup", handlers.CreateUser)
 	http.HandleFunc("/finduser", handlers.FindUser)
 	http.HandleFunc("/deleteuser", handlers.DeleteUser)
+	http.HandleFunc("/saveuserdata", handlers.SaveHandler)
+	http.HandleFunc("/dbcalc", handlers.CalcDB)
 
 	go runServer()
 
